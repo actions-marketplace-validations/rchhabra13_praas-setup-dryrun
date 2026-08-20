@@ -1,0 +1,36 @@
+name: praas-all
+
+on:
+  pull_request:
+    types: [labeled]
+
+# A reusable workflow can only retain permissions granted by its caller. These
+# grants cover OIDC for Bedrock jobs and publishing the review result.
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event.label.name == 'praas-all' && github.event.sender.type != 'Bot'
+    name: Review (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gemini
+            model: gemini/gemini-2.5-flash
+          - name: bedrock-nova
+            model: bedrock/us.amazon.nova-pro-v1:0
+          - name: bedrock-qwen
+            model: bedrock/qwen.qwen3-coder-next
+          - name: bedrock-kimi
+            model: bedrock/moonshotai.kimi-k2.5
+          - name: bedrock-deepseek
+            model: bedrock/deepseek.v3.2
+    uses: ./.github/workflows/_praas-review.yml
+    secrets: inherit
+    with:
+      model: ${{ matrix.model }}

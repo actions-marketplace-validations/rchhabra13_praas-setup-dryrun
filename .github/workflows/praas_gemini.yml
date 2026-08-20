@@ -1,0 +1,22 @@
+name: praas-gemini
+
+on:
+  pull_request:
+    types: [labeled]
+
+# The shared workflow requests a fixed permission set for every model. A caller
+# must grant that full set even though this Gemini job does not request an OIDC token.
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event.label.name == 'praas-gemini' && github.event.sender.type != 'Bot'
+    name: Review with praas (Gemini)
+    uses: ./.github/workflows/_praas-review.yml
+    secrets: inherit
+    with:
+      model: gemini/gemini-2.5-flash

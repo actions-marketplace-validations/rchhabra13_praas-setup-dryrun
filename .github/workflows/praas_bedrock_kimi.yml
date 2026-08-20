@@ -1,0 +1,22 @@
+name: praas-bedrock-kimi-k2.5
+
+on:
+  pull_request:
+    types: [labeled]
+
+# A reusable workflow can only retain permissions granted by its caller. These
+# grants cover OIDC for Bedrock and publishing the review result.
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event.label.name == 'praas-bedrock-kimi-k2.5' && github.event.sender.type != 'Bot'
+    name: Review with praas (Bedrock Kimi K2.5)
+    uses: ./.github/workflows/_praas-review.yml
+    secrets: inherit
+    with:
+      model: bedrock/moonshotai.kimi-k2.5

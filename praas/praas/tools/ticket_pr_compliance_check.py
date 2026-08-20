@@ -1,0 +1,342 @@
+import re
+import traceback
+from urllib.parse import urlparse
+
+from praas.config_loader import get_settings
+from praas.git_providers import GithubProvider
+from praas.git_providers import AzureDevopsProvider
+from praas.log import get_logger
+
+# Compile the regex pattern once, outside the function
+GITHUB_TICKET_PATTERN = re.compile(
+     r'(https://github[^/]+/[^/]+/[^/]+/issues/\d+)|(\b(\w+)/(\w+)#(\d+)\b)|(#\d+)'
+)
+# Option A: issue number at start of branch or after /, followed by - or end (e.g. feature/1-test-issue, 123-fix)
+BRANCH_ISSUE_PATTERN = re.compile(r"(?:^|/)(\d{1,6})(?=-|$)")
+
+def find_jira_tickets(text):
+    # Regular expression patterns for JIRA tickets
+    patterns = [
+        r'\b[A-Z]{2,10}-\d{1,7}\b',  # Standard JIRA ticket format (e.g., PROJ-123)
+        r'(?:https?://[^\s/]+/browse/)?([A-Z]{2,10}-\d{1,7})\b'  # JIRA URL or just the ticket
+    ]
+
+    tickets = set()
+    for pattern in patterns:
+        matches = re.findall(pattern, text)
+        for match in matches:
+            if isinstance(match, tuple):
+                # If it's a tuple (from the URL pattern), take the last non-empty group
+                ticket = next((m for m in reversed(match) if m), None)
+            else:
+                ticket = match
+            if ticket:
+                tickets.add(ticket)
+
+    return list(tickets)
+
+
+def extract_ticket_links_from_pr_description(pr_description, repo_path, base_url_html='https://github.com'):
+    """
+    Extract all ticket links from PR description
+    """
+    # Preserve first-seen order while de-duplicating, so the cap below selects a
+    # deterministic subset (a plain set would slice an arbitrary, run-varying one).
+    seen = set()
+    github_tickets = []
+
+    def _add(url):
+        if url not in seen:
+            seen.add(url)
+            github_tickets.append(url)
+
+    try:
+        # Use the updated pattern to find matches
+        matches = GITHUB_TICKET_PATTERN.findall(pr_description)
+
+        for match in matches:
+            if match[0]:  # Full URL match
+                _add(match[0])
+            elif match[1]:  # Shorthand notation match: owner/repo#issue_number
+                owner, repo, issue_number = match[2], match[3], match[4]
+                _add(f"{base_url_html.strip('/')}/{owner}/{repo}/issues/{issue_number}")
+            else:  # #123 format
+                issue_number = match[5][1:]  # remove #
+                if issue_number.isdigit() and len(issue_number) < 5 and repo_path:
+                    _add(f"{base_url_html.strip('/')}/{repo_path}/issues/{issue_number}")
+
+        if len(github_tickets) > 3:
+            get_logger().info(f"Too many tickets found in PR description: {len(github_tickets)}")
+            # Limit the number of tickets to 3
+            github_tickets = github_tickets[:3]
+    except Exception as e:
+        get_logger().error(f"Error extracting tickets error= {e}",
+                           artifact={"traceback": traceback.format_exc()})
+
+    return github_tickets
+
+def extract_ticket_links_from_branch_name(branch_name, repo_path, base_url_html="https://github.com"):
+    """
+    Extract GitHub issue URLs from branch name. Numbers are matched at start of branch or after /,
+    followed by - or end (e.g. feature/1-test-issue -> #1). Respects extract_issue_from_branch
+    and optional branch_issue_regex (may be under [config] in TOML).
+    """
+    if not branch_name or not repo_path:
+        return []
+    if not isinstance(branch_name, str):
+        return []
+    settings = get_settings()
+    if not settings.get("extract_issue_from_branch", settings.get("config.extract_issue_from_branch", True)):
+        return []
+    github_tickets = set()
+    custom_regex_str = settings.get("branch_issue_regex") or settings.get("config.branch_issue_regex", "") or ""
+    if custom_regex_str:
+        try:
+            pattern = re.compile(custom_regex_str)
+            if pattern.groups < 1:
+                get_logger().error(
+                    "branch_issue_regex must contain at least one capturing group for the issue number; using default pattern."
+                )
+                pattern = BRANCH_ISSUE_PATTERN
+        except re.error as e:
+            get_logger().error(f"Invalid custom regex for branch issue extraction: {e}")
+            return []
+    else:
+        pattern = BRANCH_ISSUE_PATTERN
+    for match in pattern.finditer(branch_name):
+        try:
+            issue_number = match.group(1)
+        except IndexError:
+            continue
+        if issue_number and issue_number.isdigit():
+            github_tickets.add(
+                f"{base_url_html.strip('/')}/{repo_path}/issues/{issue_number}"
+            )
+    return list(github_tickets)
+
+
+def _normalize_github_host(url):
+    """
+    Host of a GitHub URL, normalized so that forms addressing the same instance compare equal:
+    `urlparse().hostname` drops the port and any userinfo and lowercases the result, so
+    `github.com:443` and `github.com` are one host, and `api.github.com` is folded onto
+    `github.com` (on GitHub Enterprise both forms already share a host and differ only by the
+    `/api/v3` path prefix). Returns "" when no host can be determined.
+    """
+    try:
+        host = urlparse(url or "").hostname or ""
+    except (AttributeError, TypeError, ValueError):
+        return ""
+    return host[len("api."):] if host.startswith("api.") else host
+
+
+def _get_repo_obj_for_ticket(git_provider, ticket_url, repo_name, repo_obj_cache):
+    """
+    Resolve the repository handle that owns the ticket at `ticket_url`.
+
+    A ticket linked from a PR description may live in a different repository than the PR
+    itself, so it must be fetched from its own repository. The PR's `repo_obj` is reused
+    when the ticket belongs to the PR's repository, to avoid an extra API call.
+
+    `_parse_issue_url` drops the host, so `owner/repo` alone does not identify a repository
+    when a description links across GitHub instances (e.g. GitHub Enterprise and github.com).
+    A ticket hosted elsewhere is rejected rather than served from the PR's instance, since
+    `github_client` is authenticated against a single host. Hosts that cannot be determined
+    are treated as local, keeping the previous behaviour.
+    """
+    ticket_host = _normalize_github_host(ticket_url)
+    provider_host = _normalize_github_host(getattr(git_provider, "base_url_html", ""))
+    if ticket_host and provider_host and ticket_host != provider_host:
+        # The URL itself is left out of the message: it comes from PR description content and
+        # is logged by the caller, so only the parsed host and repo are reported.
+        raise ValueError(f"Ticket {repo_name} is hosted on {ticket_host}, "
+                         f"which is not the PR's GitHub instance ({provider_host})")
+
+    # GitHub owner/repo names are case-insensitive, so a link spelled `Org/Repo` addresses the
+    # same repository as `org/repo` and must hit the same fast path and cache entry.
+    cache_key = (ticket_host, repo_name.lower())
+    if cache_key in repo_obj_cache:
+        cached = repo_obj_cache[cache_key]
+        # Failures are cached too: several tickets or sub-issues of one run may point at the
+        # same unreachable repository, and retrying the lookup each time only repeats the
+        # failing API call and its log line.
+        if isinstance(cached, Exception):
+            raise cached
+        return cached
+
+    pr_repo_name = getattr(git_provider, "repo", None) or ""
+    pr_repo_obj = getattr(git_provider, "repo_obj", None)
+    is_pr_repo = repo_name.lower() == pr_repo_name.lower() and pr_repo_obj is not None
+    if is_pr_repo:
+        repo_obj = pr_repo_obj
+    else:
+        try:
+            repo_obj = git_provider.github_client.get_repo(repo_name)
+        except Exception as e:
+            repo_obj_cache[cache_key] = e
+            raise
+
+    repo_obj_cache[cache_key] = repo_obj
+    return repo_obj
+
+
+async def extract_tickets(git_provider):
+    MAX_TICKET_CHARACTERS = 10000
+    try:
+        if isinstance(git_provider, GithubProvider):
+            user_description = git_provider.get_user_description()
+            description_tickets = extract_ticket_links_from_pr_description(
+                user_description, git_provider.repo, git_provider.base_url_html
+            )
+            branch_name = git_provider.get_pr_branch()
+            branch_tickets = extract_ticket_links_from_branch_name(
+                branch_name, git_provider.repo, git_provider.base_url_html
+            )
+            seen = set()
+            merged = []
+            for link in description_tickets + branch_tickets:
+                if link not in seen:
+                    seen.add(link)
+                    merged.append(link)
+            if len(merged) > 3:
+                get_logger().info(f"Too many tickets (description + branch): {len(merged)}")
+                tickets = merged[:3]
+            else:
+                tickets = merged
+            tickets_content = []
+            repo_obj_cache = {}
+
+            if tickets:
+
+                for ticket in tickets:
+                    repo_name, original_issue_number = git_provider._parse_issue_url(ticket)
+
+                    try:
+                        repo_obj = _get_repo_obj_for_ticket(git_provider, ticket, repo_name, repo_obj_cache)
+                        issue_main = repo_obj.get_issue(original_issue_number)
+                    except Exception as e:
+                        get_logger().error(f"Error getting main issue {repo_name}#{original_issue_number}: {e}",
+                                           artifact={"traceback": traceback.format_exc()})
+                        continue
+
+                    issue_body_str = issue_main.body or ""
+                    if len(issue_body_str) > MAX_TICKET_CHARACTERS:
+                        issue_body_str = issue_body_str[:MAX_TICKET_CHARACTERS] + "..."
+
+                    # Extract sub-issues
+                    sub_issues_content = []
+                    try:
+                        sub_issues = git_provider.fetch_sub_issues(ticket)
+                        for sub_issue_url in sub_issues:
+                            try:
+                                sub_repo, sub_issue_number = git_provider._parse_issue_url(sub_issue_url)
+                                sub_repo_obj = _get_repo_obj_for_ticket(git_provider, sub_issue_url, sub_repo,
+                                                                        repo_obj_cache)
+                                sub_issue = sub_repo_obj.get_issue(sub_issue_number)
+
+                                sub_body = sub_issue.body or ""
+                                if len(sub_body) > MAX_TICKET_CHARACTERS:
+                                    sub_body = sub_body[:MAX_TICKET_CHARACTERS] + "..."
+
+                                # Extract sub-issue labels
+                                sub_labels = []
+                                try:
+                                    for label in sub_issue.labels:
+                                        sub_labels.append(label.name if hasattr(label, 'name') else label)
+                                except Exception as e:
+                                    get_logger().error(f"Error extracting labels error= {e}",
+                                                       artifact={"traceback": traceback.format_exc()})
+
+                                sub_issues_content.append({
+                                    'ticket_url': sub_issue_url,
+                                    'title': sub_issue.title,
+                                    'body': sub_body,
+                                    'labels': ", ".join(sub_labels)
+                                })
+                            except Exception as e:
+                                get_logger().warning(f"Failed to fetch sub-issue content for {sub_issue_url}: {e}")
+
+                    except Exception as e:
+                        get_logger().warning(f"Failed to fetch sub-issues for {ticket}: {e}")
+
+                    # Extract labels
+                    labels = []
+                    try:
+                        for label in issue_main.labels:
+                            labels.append(label.name if hasattr(label, 'name') else label)
+                    except Exception as e:
+                        get_logger().error(f"Error extracting labels error= {e}",
+                                           artifact={"traceback": traceback.format_exc()})
+
+                    tickets_content.append({
+                        'ticket_id': issue_main.number,
+                        'ticket_url': ticket,
+                        'title': issue_main.title,
+                        'body': issue_body_str,
+                        'labels': ", ".join(labels),
+                        'sub_issues': sub_issues_content  # Store sub-issues content
+                    })
+
+                return tickets_content
+
+        elif isinstance(git_provider, AzureDevopsProvider):
+            tickets_info = git_provider.get_linked_work_items()
+            tickets_content = []
+            for ticket in tickets_info:
+                try:
+                    ticket_body_str = ticket.get("body", "")
+                    if len(ticket_body_str) > MAX_TICKET_CHARACTERS:
+                        ticket_body_str = ticket_body_str[:MAX_TICKET_CHARACTERS] + "..."
+
+                    tickets_content.append(
+                        {
+                            "ticket_id": ticket.get("id"),
+                            "ticket_url": ticket.get("url"),
+                            "title": ticket.get("title"),
+                            "body": ticket_body_str,
+                            "requirements": ticket.get("acceptance_criteria", ""),
+                            "labels": ", ".join(ticket.get("labels", [])),
+                        }
+                    )
+                except Exception as e:
+                    get_logger().error(
+                        f"Error processing Azure DevOps ticket: {e}",
+                        artifact={"traceback": traceback.format_exc()},
+                    )
+            return tickets_content
+
+    except Exception as e:
+        get_logger().error(f"Error extracting tickets error= {e}",
+                           artifact={"traceback": traceback.format_exc()})
+
+
+async def extract_and_cache_pr_tickets(git_provider, vars):
+    if not get_settings().get('pr_reviewer.require_ticket_analysis_review', False):
+        return
+
+    related_tickets = get_settings().get('related_tickets', [])
+
+    if not related_tickets:
+        tickets_content = await extract_tickets(git_provider)
+
+        if tickets_content:
+            # Store sub-issues along with main issues
+            for ticket in tickets_content:
+                if "sub_issues" in ticket and ticket["sub_issues"]:
+                    for sub_issue in ticket["sub_issues"]:
+                        related_tickets.append(sub_issue)  # Add sub-issues content
+
+                related_tickets.append(ticket)
+
+            get_logger().info("Extracted tickets and sub-issues from PR description",
+                              artifact={"tickets": related_tickets})
+
+            vars['related_tickets'] = related_tickets
+            get_settings().set('related_tickets', related_tickets)
+    else:
+        get_logger().info("Using cached tickets", artifact={"tickets": related_tickets})
+        vars['related_tickets'] = related_tickets
+
+
+def check_tickets_relevancy():
+    return True

@@ -1,0 +1,25 @@
+# Copy this file to local.auto.tfvars (git-ignored) and edit the values.
+# The defaults target IkkaLabs/praas-test; override them for your own repository.
+
+# --- Target repository ---------------------------------------------------------
+# Read the two numeric IDs with the GitHub CLI:
+#   gh api /repos/<owner>/<repo> --jq .id     # github_repository_id
+#   gh api /orgs/<owner> --jq .id             # github_owner_id (use /users/<owner> for a personal account)
+# github_owner         = "<owner>"
+# github_repository    = "<repo>"
+# github_owner_id      = <org-or-user-id>
+# github_repository_id = <repository-id>
+
+# --- GitHub management ----------------------------------------------------------
+# Set true to let Terraform write the AWS_ROLE_ARN secret and create the review
+# labels. Requires a PAT in the GITHUB_TOKEN environment variable (never store it
+# in this file). See ../setup-praas.md.
+# manage_github = true
+
+# --- Existing AWS OIDC provider -------------------------------------------------
+# If this AWS account already has GitHub's OIDC provider, reuse it instead of
+# creating a duplicate (an account can have only one for that URL).
+# github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
+
+# --- Optional -------------------------------------------------------------------
+# role_name = "praas-test-github-actions-bedrock"

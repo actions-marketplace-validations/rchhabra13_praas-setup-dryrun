@@ -1,0 +1,38 @@
+{
+  "name": "praas",
+  "description": "praas",
+  "key": "app_key",
+  "vendor": {
+    "name": "Praas",
+    "url": "https://praas.ai"
+  },
+  "authentication": {
+    "type": "jwt"
+  },
+  "baseUrl": "base_url",
+  "lifecycle": {
+    "installed": "/installed",
+    "uninstalled": "/uninstalled"
+  },
+  "scopes": [
+    "account",
+    "repository:write",
+    "pullrequest:write",
+    "wiki"
+  ],
+  "contexts": [
+    "account"
+  ],
+  "modules": {
+    "webhooks": [
+      {
+        "event": "*",
+        "url": "/webhook"
+      }
+    ]
+  },
+  "links": {
+    "privacy": "https://praas.ai/privacy-policy",
+    "terms": "https://praas.ai/terms"
+  }
+}

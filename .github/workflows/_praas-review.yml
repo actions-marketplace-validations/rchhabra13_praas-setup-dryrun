@@ -1,0 +1,67 @@
+name: _praas-review
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: "litellm-style model id, e.g. gemini/gemini-2.5-flash or bedrock/us.amazon.nova-pro-v1:0"
+        required: true
+        type: string
+      max_model_tokens:
+        description: "Hard cap on tokens for this model (CONFIG__CUSTOM_MODEL_MAX_TOKENS)"
+        required: false
+        type: string
+        default: "32000"
+
+jobs:
+  review:
+    name: "Review (${{ inputs.model }})"
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      # Build from the base branch, never from the pull request, so a PR
+      # cannot alter the image that runs with repository secrets.
+      - name: Check out base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Build praas
+        run: docker build -t praas -f Dockerfile .
+
+      - name: Configure temporary AWS credentials
+        if: startsWith(inputs.model, 'bedrock/')
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # OPENAI__API_BASE is only passed for openai/-prefixed (local, tunnel-served) models.
+      # litellm.api_base is a GLOBAL override, not scoped to the openai provider - setting it
+      # unconditionally routes bedrock/ and gemini/ calls at the local tunnel too, which fails
+      # them all. The other provider credentials below are safe to pass unconditionally
+      # because litellm only reads the ones matching the configured model's provider.
+      - name: Review pull request
+        run: |
+          docker run --rm \
+            -e CONFIG__GIT_PROVIDER="github" \
+            -e GITHUB__USER_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
+            -e GOOGLE_AI_STUDIO__GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            -e AWS__AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+            -e AWS__AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+            -e AWS__AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" \
+            -e AWS__AWS_REGION_NAME="us-east-1" \
+            -e OPENAI__API_BASE="${{ startsWith(inputs.model, 'openai/') && secrets.LOCAL_LLM_BASE || '' }}" \
+            -e OPENAI__KEY="${{ startsWith(inputs.model, 'openai/') && secrets.LOCAL_LLM_KEY || '' }}" \
+            -e CONFIG__MODEL="${{ inputs.model }}" \
+            -e CONFIG__FALLBACK_MODELS='[]' \
+            -e CONFIG__CUSTOM_MODEL_MAX_TOKENS="${{ inputs.max_model_tokens }}" \
+            -e PR_REVIEWER__REQUIRE_SCORE_REVIEW="true" \
+            -e PR_REVIEWER__PERSISTENT_COMMENT="false" \
+            -e PR_REVIEWER__ENABLE_MULTI_SUBAGENT_REVIEW="true" \
+            praas \
+            --pr_url "${{ github.event.pull_request.html_url }}" review

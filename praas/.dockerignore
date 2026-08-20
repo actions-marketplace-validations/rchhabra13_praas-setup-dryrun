@@ -1,0 +1,7 @@
+.venv/
+venv/
+praas/settings/.secrets.toml
+pics/
+praas.egg-info/
+build/
+**/.env

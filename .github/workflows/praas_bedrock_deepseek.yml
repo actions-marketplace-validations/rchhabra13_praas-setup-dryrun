@@ -1,0 +1,22 @@
+name: praas-bedrock-deepseek
+
+on:
+  pull_request:
+    types: [labeled]
+
+# A reusable workflow can only retain permissions granted by its caller. These
+# grants cover OIDC for Bedrock and publishing the review result.
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    if: github.event.label.name == 'praas-bedrock-deepseek' && github.event.sender.type != 'Bot'
+    name: Review with praas (Bedrock DeepSeek V3.2)
+    uses: ./.github/workflows/_praas-review.yml
+    secrets: inherit
+    with:
+      model: bedrock/deepseek.v3.2

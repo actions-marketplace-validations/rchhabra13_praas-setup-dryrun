@@ -1,0 +1,8 @@
+.aws-iam/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+__pycache__/
+*.pyc
