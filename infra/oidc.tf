@@ -69,7 +69,7 @@ data "aws_iam_policy_document" "github_actions_trust" {
 
 resource "aws_iam_role" "github_actions_bedrock" {
   name                 = var.role_name
-  description          = "Allows IkkaLabs/praas-test GitHub Actions to invoke the configured Bedrock review models."
+  description          = "Allows IkkaLabs/praas GitHub Actions to invoke the configured Bedrock review models."
   assume_role_policy   = data.aws_iam_policy_document.github_actions_trust.json
   max_session_duration = 3600
 }

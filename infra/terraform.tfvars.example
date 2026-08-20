@@ -1,5 +1,5 @@
 # Copy this file to local.auto.tfvars (git-ignored) and edit the values.
-# The defaults target IkkaLabs/praas-test; override them for your own repository.
+# The defaults target IkkaLabs/praas; override them for your own repository.
 
 # --- Target repository ---------------------------------------------------------
 # Read the two numeric IDs with the GitHub CLI:
@@ -22,4 +22,4 @@
 # github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
 
 # --- Optional -------------------------------------------------------------------
-# role_name = "praas-test-github-actions-bedrock"
+# role_name = "praas-github-actions-bedrock"

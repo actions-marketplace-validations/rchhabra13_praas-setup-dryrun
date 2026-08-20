@@ -18,7 +18,7 @@ variable "github_owner" {
 variable "github_repository" {
   description = "Name of the existing GitHub repository allowed to assume the role."
   type        = string
-  default     = "praas-test"
+  default     = "praas"
 }
 
 variable "github_owner_id" {
@@ -30,7 +30,7 @@ variable "github_owner_id" {
 variable "github_repository_id" {
   description = "Immutable GitHub repository ID used in the OIDC trust policy."
   type        = number
-  default     = 1324415839
+  default     = 1340021625
 }
 
 variable "github_oidc_provider_arn" {
@@ -49,9 +49,9 @@ variable "github_oidc_provider_arn" {
 }
 
 variable "role_name" {
-  description = "Name of the IAM role assumed by the praas-test review workflows."
+  description = "Name of the IAM role assumed by the praas review workflows."
   type        = string
-  default     = "praas-test-github-actions-bedrock"
+  default     = "praas-github-actions-bedrock"
 }
 
 variable "tags" {
@@ -59,8 +59,8 @@ variable "tags" {
   type        = map(string)
   default = {
     ManagedBy  = "Terraform"
-    Project    = "praas-test"
-    Repository = "IkkaLabs/praas-test"
+    Project    = "praas"
+    Repository = "IkkaLabs/praas"
   }
 }
 

@@ -6,7 +6,7 @@
 #     the manual `gh secret set` step in the README is no longer required; and
 #   - creates the PR labels that trigger the review workflows.
 #
-# The PAT needs, on IkkaLabs/praas-test: Administration and Secrets (to write
+# The PAT needs, on IkkaLabs/praas: Administration and Secrets (to write
 # the Actions secret) and Actions/Metadata read. Leave manage_github false to
 # manage only AWS and set the secret and labels by hand.
 

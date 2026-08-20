@@ -1,6 +1,6 @@
-# praas-test
+# praas
 
-This repository demonstrates praas integrated into a project. praas is an AI-powered pull request review agent that works in your own GitHub repository. The agent lives in [`praas/`](praas/), containerized and executed directly within GitHub Actions review workflows, with integrations for AWS Bedrock and other AI providers.
+praas is an AI-powered pull request review agent that works in your own GitHub repository. This repository contains the agent itself, in [`praas/`](praas/) — containerized and executed directly within GitHub Actions review workflows, with integrations for AWS Bedrock and other AI providers.
 
 ## Pull Request Review Workflows
 
@@ -20,12 +20,11 @@ Reviews are triggered by adding a label to a GitHub pull request. Each label rou
 ## Architecture Overview
 
 ```
-praas-test/
+.
 ├── .github/workflows/        # Label-triggered GitHub Actions review workflows
 ├── Dockerfile                 # Container image build spec for praas
 ├── infra/                    # Terraform code for AWS OIDC trust and GitHub resources
-├── praas/                    # praas source code and configuration
-└── testbed/                  # Polyglot application fixture for multi-lens testing
+└── praas/                    # praas source code and configuration
 ```
 
 praas analyzes pull request diffs, provides specialized multi-lens feedback (correctness, security, testing, documentation), and posts reviews directly back to GitHub pull requests.
@@ -182,7 +181,7 @@ Clone this repository, copy the four required paths into your own repository, th
 Clone this repository into a temporary folder:
 
 ```bash
-git clone https://github.com/IkkaLabs/praas-test.git praas-src
+git clone https://github.com/IkkaLabs/praas.git praas-src
 ```
 
 Copy the workflows, Dockerfile, agent, and infra code into your repository (replace `your-repo` with the path to your local repository clone):
@@ -217,4 +216,3 @@ git push
 
 - [`praas/README.md`](praas/README.md): CLI options, supported git providers, configuration parameters, and unit testing guidelines
 - [`setup-praas.md`](setup-praas.md): Terraform variables, IAM policy structure, and teardown instructions
-- [`testbed/README.md`](testbed/README.md): Architecture of the polyglot application fixture used to test multi-subagent reviews

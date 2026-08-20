@@ -1,6 +1,6 @@
 # praas
 
-`praas` is the core pull request review service maintained inside the [`praas/`](./) directory of the [`praas-test`](../README.md) repository. It includes provider integrations, model routing logic, multi-subagent review workflows, and diff analysis tools.
+`praas` is the core pull request review service maintained inside the [`praas/`](./) directory of this repository (see the [root README](../README.md)). It includes provider integrations, model routing logic, multi-subagent review workflows, and diff analysis tools.
 
 The installed console command is `praas`.
 
