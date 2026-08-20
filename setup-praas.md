@@ -15,7 +15,7 @@ By default, Terraform manages **AWS IAM resources only**. When `manage_github = 
 
 | Variable | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `region` | `string` | `"us-east-1"` | AWS region for the Bedrock clients. **Not freely configurable.** A `validation` block rejects anything but `"us-east-1"`, because the checked-in model set and the Nova inference-profile policy are only verified there. |
+| `region` | `string` | `"us-east-1"` | AWS region for the Bedrock clients.|
 | `github_owner` | `string` | `"IkkaLabs"` | Owner of the target repository. |
 | `github_repository` | `string` | `"praas"` | Target repository name. |
 | `github_owner_id` | `number` | `246152865` | Immutable numeric ID of `github_owner`. `gh api /orgs/<owner> --jq .id` (or `/users/<owner>` for a personal account). |
