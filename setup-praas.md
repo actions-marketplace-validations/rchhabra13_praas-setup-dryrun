@@ -1,35 +1,47 @@
 # Setting up praas infrastructure
 
-This directory contains the Terraform configuration to provision AWS authentication and Amazon Bedrock IAM permissions for praas review workflows.
+`infra/` is the Terraform configuration that provisions AWS authentication and Amazon Bedrock IAM permissions for the `praas-bedrock-*` review workflows, and optionally the GitHub-side wiring (labels, secret) those workflows need.
 
-By default, Terraform manages AWS IAM resources only. When `manage_github = true` is set, Terraform also uses the GitHub provider to configure the `AWS_ROLE_ARN` repository secret and create review labels directly in GitHub.
+By default, Terraform manages **AWS IAM resources only**. When `manage_github = true` is set, it also uses the GitHub provider to create the `praas-*` review labels and write the `AWS_ROLE_ARN` repository secret.
 
-## Provisioned infrastructure
+The shipped variable defaults target **this repository, `IkkaLabs/praas`, itself**. If you're wiring praas into a *different* repository, override every value under [Target repository](#target-repository) below. Applying with the defaults unmodified scopes the IAM trust policy to `IkkaLabs/praas`, not your repo.
 
-- **IAM OIDC Identity Provider**: Registers `token.actions.githubusercontent.com` in AWS (or reuses an existing provider ARN if specified).
-- **IAM Role for GitHub Actions**: Creates an IAM role with a trust policy scoped to your repository by owner login, numeric owner ID, and numeric repository ID.
-- **Amazon Bedrock IAM Permissions**: Attaches inline policies authorizing model invocations in `us-east-1` for Amazon Nova Pro, Qwen3 Coder Next, Kimi K2.5, and DeepSeek V3.2.
-- **GitHub Repository Management (Optional)**: Creates `praas-*` review labels and sets the `AWS_ROLE_ARN` secret in your repository when `manage_github = true`.
+## What gets provisioned
+
+- **IAM OIDC Identity Provider**: registers `token.actions.githubusercontent.com` in AWS, or reuses an existing provider ARN if `github_oidc_provider_arn` is set (an AWS account can only have one provider per URL).
+- **IAM Role** (`aws_iam_role.github_actions_bedrock`): trust policy scoped to your repository by owner login, numeric owner ID, and numeric repository ID (both the legacy and post-2026-07-15 OIDC subject formats are allowed, see `infra/oidc.tf`).
+- **Bedrock invoke permissions**: inline policy granting `bedrock:InvokeModel`/`InvokeModelWithResponseStream` on exactly the four review models: DeepSeek V3.2, Kimi K2.5, Qwen3 Coder Next (direct foundation-model ARNs), and Amazon Nova Pro (via its cross-region inference profile, resolved across `us-east-1`/`us-east-2`/`us-west-2`).
+- **GitHub labels and secret** (only when `manage_github = true`): the 8 `praas-*` review labels and the `AWS_ROLE_ARN` Actions secret, set to the IAM role's ARN.
 
 ## Terraform variables
 
-| Variable | Type | Default | Description |
+| Variable | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `github_owner` | `string` | — | GitHub organization or user account name |
-| `github_repository` | `string` | — | Target GitHub repository name |
-| `github_owner_id` | `number` | — | Numeric ID of the GitHub owner or organization |
-| `github_repository_id` | `number` | — | Numeric ID of the GitHub repository |
-| `manage_github` | `bool` | `false` | When `true`, provisions GitHub secrets and review labels via the GitHub Terraform provider |
-| `github_oidc_provider_arn` | `string` | `""` | Existing GitHub Actions IAM OIDC provider ARN. If empty, Terraform creates one |
-| `aws_region` | `string` | `"us-east-1"` | AWS Region for Bedrock model access |
+| `region` | `string` | `"us-east-1"` | AWS region for the Bedrock clients. **Not freely configurable.** A `validation` block rejects anything but `"us-east-1"`, because the checked-in model set and the Nova inference-profile policy are only verified there. |
+| `github_owner` | `string` | `"IkkaLabs"` | Owner of the target repository. |
+| `github_repository` | `string` | `"praas"` | Target repository name. |
+| `github_owner_id` | `number` | `246152865` | Immutable numeric ID of `github_owner`. `gh api /orgs/<owner> --jq .id` (or `/users/<owner>` for a personal account). |
+| `github_repository_id` | `number` | `1340021625` | Immutable numeric ID of `github_repository`. `gh api /repos/<owner>/<repo> --jq .id`. |
+| `github_oidc_provider_arn` | `string`, nullable | `null` | Set to an existing `token.actions.githubusercontent.com` OIDC provider ARN to reuse it instead of creating a new one. Validated against that exact provider URL if set. |
+| `role_name` | `string` | `"praas-github-actions-bedrock"` | Name of the IAM role the workflows assume. |
+| `tags` | `map(string)` | `{ManagedBy="Terraform", Project="praas", Repository="IkkaLabs/praas"}` | Applied to every AWS resource this stack creates, via `default_tags` on the AWS provider. |
+| `manage_github` | `bool` | `false` | When `true`, also creates the review labels and the `AWS_ROLE_ARN` secret via the GitHub provider (needs `GITHUB_TOKEN`). |
+| `review_labels` | `map(string)` | the 8 `praas-*` labels → hex colors (see `infra/variables.tf`) | Only created when `manage_github = true`. Matches the label table in the root [README.md](README.md). |
+
+### Outputs
+
+| Output | Description |
+| --- | --- |
+| `github_actions_role_arn` | The IAM role ARN. This is the value to store as the `AWS_ROLE_ARN` GitHub secret. |
+| `github_oidc_provider_arn` | The OIDC provider ARN actually in use (created or reused). |
+| `allowed_oidc_subjects` | The exact GitHub OIDC subjects the role's trust policy accepts. |
+| `bedrock_resource_arns` | Every Bedrock model/inference-profile ARN the role is granted `InvokeModel` on. |
 
 ## Prerequisites
 
 ### Terraform
 
-Install Terraform 1.6 or higher from [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install).
-
-Verify the installation:
+Requires Terraform `>= 1.6.0`. Install from [developer.hashicorp.com/terraform/install](https://developer.hashicorp.com/terraform/install), then verify:
 
 ```bash
 terraform version
@@ -37,104 +49,72 @@ terraform version
 
 ### AWS credentials
 
-You need an AWS account with permissions to create IAM roles, IAM OIDC providers, and inline policies.
-
-Configure credentials using the AWS CLI:
+An AWS account/user with permission to create IAM roles, IAM OIDC providers, and inline policies.
 
 ```bash
 aws configure
 ```
 
-You will be prompted for:
-- **AWS Access Key ID**: Go to AWS Console → IAM → Your user → Security credentials → Create access key
-- **AWS Secret Access Key**: Displayed once when creating the key — copy it immediately
-- **Default region**: Enter `us-east-1`
-- **Default output format**: Press Enter to skip
+You'll be prompted for:
+- **AWS Access Key ID**: AWS Console → IAM → Your user → Security credentials → Create access key
+- **AWS Secret Access Key**: shown once when creating the key, copy it immediately
+- **Default region**: `us-east-1` (the only region this stack's `region` variable accepts)
+- **Default output format**: press Enter to skip
 
-Alternatively, export credentials as environment variables:
+Or export credentials directly:
 
 ```bash
 export AWS_ACCESS_KEY_ID="your-access-key-id"
-```
-
-```bash
 export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
-```
-
-```bash
 export AWS_DEFAULT_REGION="us-east-1"
 ```
 
 ### Amazon Bedrock model access
 
-In the AWS Console:
-
-1. Go to **Amazon Bedrock → Model access → Manage model access**
-2. Enable: Amazon Nova Pro, Qwen3 Coder Next, Kimi K2.5, DeepSeek V3.2
-3. Click **Save changes** and wait for status to become **Access granted**
+In the AWS Console: **Amazon Bedrock → Model access → Manage model access** → enable Amazon Nova Pro, Qwen3 Coder Next, Kimi K2.5, and DeepSeek V3.2 → **Save changes** → wait for **Access granted**.
 
 ### GitHub Personal Access Token
 
-Required only when `manage_github = true`. This token lets Terraform write the `AWS_ROLE_ARN` secret and create review labels in your repository.
+Required only when `manage_github = true`. Lets Terraform write the `AWS_ROLE_ARN` secret and create the review labels.
 
-1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens**
-2. Click **Generate new token**
-3. Set **Resource owner** to your account or organization
-4. Under **Repository access**, select **Only select repositories** and choose your target repository
-5. Under **Permissions**, grant:
+1. **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**
+2. **Resource owner**: your account or organization
+3. **Repository access**: Only select repositories → choose your target repository
+4. **Permissions**:
    - **Administration**: Read and write
    - **Secrets**: Read and write
    - **Actions**: Read-only
-   - **Metadata**: Read-only (required, enabled automatically)
-6. Click **Generate token** and copy the value — you will not see it again
-
-Export the token before running Terraform:
+   - **Metadata**: Read-only (required, auto-enabled)
+5. Generate and copy the token (shown once)
 
 ```bash
 export GITHUB_TOKEN="github_pat_your_token_here"
 ```
 
-## Finding your variable values
+## Target repository
 
-### github_owner and github_repository
-
-`github_owner` is your GitHub username or organization name (e.g. `octocat` or `my-org`). `github_repository` is the repository name (e.g. `my-project`).
-
-### github_owner_id
-
-For a personal account:
+If you're applying this against your **own** repository rather than `IkkaLabs/praas`, override these four:
 
 ```bash
-gh api /users/<your-username> --jq .id
-```
-
-For an organization:
-
-```bash
-gh api /orgs/<your-org> --jq .id
-```
-
-### github_repository_id
-
-```bash
-gh api /repos/<owner>/<repo> --jq .id
+gh api /users/<your-username> --jq .id     # or /orgs/<org> --jq .id for an org (this is github_owner_id)
+gh api /repos/<owner>/<repo> --jq .id      # github_repository_id
 ```
 
 ## Execution guide
 
-**1.** Navigate to the `infra/` directory:
+**1.** From the repo root:
 
 ```bash
 cd infra
 ```
 
-**2.** Create a local variables file from the provided example:
+**2.** Create a local variables file:
 
 ```bash
 cp terraform.tfvars.example local.auto.tfvars
 ```
 
-**3.** Open `local.auto.tfvars` and fill in your values:
+**3.** Edit `local.auto.tfvars`. Every field is optional if you're applying against `IkkaLabs/praas` as-is; set them to target your own repository instead:
 
 ```hcl
 github_owner         = "<owner>"
@@ -143,83 +123,89 @@ github_owner_id      = <numeric-owner-id>
 github_repository_id = <numeric-repo-id>
 manage_github        = true
 
-# Optional: reuse an existing IAM OIDC provider if already registered in this AWS account
+# Optional: reuse an existing IAM OIDC provider already registered in this AWS account
 # github_oidc_provider_arn = "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
 ```
 
-**4.** Export your GitHub token (required when `manage_github = true`):
+**4.** Export your GitHub token (only needed when `manage_github = true`):
 
 ```bash
 export GITHUB_TOKEN="github_pat_your_token_here"
 ```
 
-**5.** Download provider plugins:
+**5.**
 
 ```bash
 terraform init
 ```
 
-**6.** Check for configuration syntax errors:
+**6.**
 
 ```bash
 terraform validate
 ```
 
-**7.** Preview what will be created — review this output before applying:
+**7.** Review before applying:
 
 ```bash
 terraform plan
 ```
 
-**8.** Create the infrastructure:
+**8.**
 
 ```bash
 terraform apply
 ```
 
-This provisions the IAM OIDC provider, IAM role, Bedrock permissions, the `AWS_ROLE_ARN` GitHub secret, and all `praas-*` review labels.
+Provisions the IAM OIDC provider, IAM role, and Bedrock permissions. When `manage_github = true`, it also creates the `AWS_ROLE_ARN` secret and all `praas-*` labels.
 
-**9.** If `manage_github = false`, set the role ARN manually in your GitHub repository under **Settings → Secrets and variables → Actions → New repository secret**, with name `AWS_ROLE_ARN` and value from:
+**9.** If `manage_github = false` (or the secret step didn't run, see below), set the secret manually: **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**, name `AWS_ROLE_ARN`, value:
 
 ```bash
 terraform output -raw github_actions_role_arn
 ```
 
-## How to tear it down
+### Applying the GitHub side without AWS credentials
 
-To remove all provisioned IAM roles and GitHub labels:
+The `AWS_ROLE_ARN` secret resource (`github_actions_secret.aws_role_arn`) reads its value from the IAM role's ARN, so it can't be created until the AWS side applies successfully. The review labels (`github_issue_label.review`) don't depend on AWS at all. If you want those live before your AWS credentials are sorted out, target them directly:
+
+```bash
+terraform apply -target='github_issue_label.review'
+```
+
+Terraform will warn that targeted applies aren't for routine use; that's expected here. Run a full `terraform apply` (no `-target`) once your AWS credentials work, to pick up the IAM/OIDC/Bedrock resources and the secret.
+
+## How to tear it down
 
 ```bash
 terraform destroy
 ```
 
 > [!WARNING]
-> `terraform destroy` will remove the GitHub OIDC Identity Provider in AWS only if it was created by this Terraform workspace. If other roles in your AWS account share the same OIDC provider, specify `github_oidc_provider_arn` in your variables to prevent Terraform from deleting a shared resource.
+> `terraform destroy` only removes the GitHub OIDC Identity Provider in AWS if this workspace created it. If other roles in your account share that provider, set `github_oidc_provider_arn` in your variables so Terraform treats it as external and doesn't delete a shared resource.
 
 ## Managing any GitHub repository with Terraform and a PAT
 
-The `manage_github` path above uses the [`integrations/github`](https://registry.terraform.io/providers/integrations/github/latest) provider to manage GitHub itself — repositories, Actions secrets, labels, branch protection — authenticated with a personal access token (PAT). This section explains the underlying mechanism generically, for adapting it to manage other repositories beyond the `manage_github` variable's built-in scope.
+The `manage_github` path above uses the [`integrations/github`](https://registry.terraform.io/providers/integrations/github/latest) provider to manage GitHub itself (repositories, Actions secrets, labels, branch protection), authenticated with a personal access token (PAT). This section explains the underlying mechanism generically, for adapting it beyond `manage_github`'s built-in scope.
 
 ### 1. Create a PAT
 
 GitHub → Settings → Developer settings → Personal access tokens.
 
-- **Fine-grained (preferred):** scope the token to the specific repositories or organization it will manage, then grant only the permissions you need:
-  - `Administration` — create repositories, manage settings, labels, branch protection.
-  - `Secrets` and `Actions` — read and write Actions secrets and variables.
-  - `Contents` — manage files, branches, releases.
-  - `Metadata` — read (required by the provider).
-- **Classic:** the `repo` scope covers most repository management; add `admin:org` for organization resources and `workflow` to edit workflow files.
-
-Prefer fine-grained tokens and the least set of permissions that lets the plan apply.
+- **Fine-grained (preferred):** scope to the specific repositories/organization, grant only what's needed:
+  - `Administration`: create repositories, manage settings, labels, branch protection.
+  - `Secrets` and `Actions`: read and write Actions secrets and variables.
+  - `Contents`: manage files, branches, releases.
+  - `Metadata`: read (required by the provider).
+- **Classic:** `repo` scope covers most repository management; add `admin:org` for organization resources and `workflow` to edit workflow files.
 
 ### 2. Provide the token by environment variable
-
-The provider reads the token from `GITHUB_TOKEN` (or `GITHUB_APP_*` for a GitHub App). Never hard-code it in `.tf` or `.tfvars` files.
 
 ```bash
 export GITHUB_TOKEN="github_pat_xxx"
 ```
+
+Never hard-code it in `.tf` or `.tfvars` files.
 
 ### 3. Configure the provider
 
@@ -233,7 +219,6 @@ terraform {
   }
 }
 
-# token comes from GITHUB_TOKEN; owner is the org or user that owns the repos
 provider "github" {
   owner = "IkkaLabs"
 }
@@ -242,20 +227,17 @@ provider "github" {
 ### 4. Declare resources
 
 ```hcl
-# Create a repository
 resource "github_repository" "example" {
   name       = "example-repo"
   visibility = "private"
 }
 
-# Set an Actions secret (for example, an OIDC role ARN produced elsewhere)
 resource "github_actions_secret" "aws_role_arn" {
   repository      = github_repository.example.name
   secret_name     = "AWS_ROLE_ARN"
   plaintext_value = var.aws_role_arn # mark the variable sensitive
 }
 
-# Create a label
 resource "github_issue_label" "review" {
   repository = github_repository.example.name
   name       = "needs-review"
@@ -273,20 +255,15 @@ terraform apply
 
 ### Managing a repository that already exists
 
-Do not declare a `github_repository` for a repo you did not create with this stack — import it instead, so Terraform adopts it rather than trying to create a duplicate:
+Don't declare a `github_repository` for a repo you didn't create with this stack. Import it instead, so Terraform adopts it rather than trying to create a duplicate:
 
 ```bash
 terraform import github_repository.example example-repo
-```
-
-Individual resources import the same way — for example an existing label:
-
-```bash
 terraform import 'github_issue_label.review' example-repo:needs-review
 ```
 
 ### Cautions
 
-- **State holds secrets in plaintext.** Any `plaintext_value` and the PAT's effects live in `terraform.tfstate`. Treat state as sensitive: use a protected remote backend (for example S3 with a lock table), and never commit it. The `.gitignore` here already excludes `*.tfstate*` and `*.tfvars`.
-- **A PAT is a long-lived credential.** It carries the token owner's access. Scope it tightly, rotate it, and store it in a secret manager — not your shell history. Where the target supports OIDC (as this repo's AWS side does), prefer short-lived OIDC federation over a standing PAT.
-- **`owner` matters.** For an organization, `owner` must be the org login and the PAT must have organization access; otherwise resources are created under the token owner's account.
+- **State holds secrets in plaintext.** Any `plaintext_value` and the PAT's effects live in `terraform.tfstate`. Use a protected remote backend (e.g. S3 with a lock table); never commit state. `.gitignore` here already excludes `*.tfstate*` and `*.tfvars`.
+- **A PAT is a long-lived credential.** Scope it tightly, rotate it, and store it in a secret manager, not shell history. Where the target supports OIDC (as this stack's AWS side does), prefer short-lived OIDC federation over a standing PAT.
+- **`owner` matters.** For an organization, `owner` must be the org login and the PAT must have organization access, or resources get created under the token owner's personal account instead.
