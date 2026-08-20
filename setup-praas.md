@@ -93,7 +93,7 @@ export GITHUB_TOKEN="github_pat_your_token_here"
 
 ## Target repository
 
-If you're applying this against your **own** repository rather than `IkkaLabs/praas`, override these four:
+If you're applying this against your **own** repository change these:
 
 ```bash
 gh api /users/<your-username> --jq .id     # or /orgs/<org> --jq .id for an org (this is github_owner_id)
