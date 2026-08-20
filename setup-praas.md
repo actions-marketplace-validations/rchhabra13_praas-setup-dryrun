@@ -4,8 +4,6 @@
 
 By default, Terraform manages **AWS IAM resources only**. When `manage_github = true` is set, it also uses the GitHub provider to create the `praas-*` review labels and write the `AWS_ROLE_ARN` repository secret.
 
-The shipped variable defaults target **this repository, `IkkaLabs/praas`, itself**. If you're wiring praas into a *different* repository, override every value under [Target repository](#target-repository) below. Applying with the defaults unmodified scopes the IAM trust policy to `IkkaLabs/praas`, not your repo.
-
 ## What gets provisioned
 
 - **IAM OIDC Identity Provider**: registers `token.actions.githubusercontent.com` in AWS, or reuses an existing provider ARN if `github_oidc_provider_arn` is set (an AWS account can only have one provider per URL).
