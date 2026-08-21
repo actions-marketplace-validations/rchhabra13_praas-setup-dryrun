@@ -1,0 +1,77 @@
+name: 'praas PR Review'
+description: 'AI-powered pull request review agent — multi-lens feedback on correctness, security, testing, and documentation.'
+author: 'IkkaLabs'
+branding:
+  icon: 'eye'
+  color: 'purple'
+
+inputs:
+  model:
+    description: >
+      litellm-style model id, e.g. gemini/gemini-2.5-flash,
+      bedrock/us.amazon.nova-pro-v1:0, or openai/<model> for an
+      OpenAI-compatible endpoint (local-llm-base/local-llm-key).
+    required: true
+  pr_url:
+    description: 'URL of the pull request to review. Pass ${{ github.event.pull_request.html_url }}.'
+    required: true
+  github-token:
+    description: 'Token used to post the review back to the PR.'
+    required: false
+    default: ${{ github.token }}
+  gemini-api-key:
+    description: 'Google AI Studio API key. Required for gemini/ models.'
+    required: false
+    default: ''
+  aws-access-key-id:
+    description: 'AWS access key id. Required for bedrock/ models (or use an OIDC-assumed role in the calling workflow and omit these).'
+    required: false
+    default: ''
+  aws-secret-access-key:
+    description: 'AWS secret access key. Required for bedrock/ models.'
+    required: false
+    default: ''
+  aws-session-token:
+    description: 'AWS session token, if using temporary credentials.'
+    required: false
+    default: ''
+  aws-region:
+    description: 'AWS region for Bedrock.'
+    required: false
+    default: 'us-east-1'
+  local-llm-base:
+    description: 'Base URL of an OpenAI-compatible endpoint. Required for openai/ models.'
+    required: false
+    default: ''
+  local-llm-key:
+    description: 'API key or auth token for the local endpoint. Required for openai/ models.'
+    required: false
+    default: ''
+  max-model-tokens:
+    description: 'Hard cap on tokens for this model.'
+    required: false
+    default: '32000'
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  env:
+    CONFIG__GIT_PROVIDER: 'github'
+    GITHUB__USER_TOKEN: ${{ inputs.github-token }}
+    GOOGLE_AI_STUDIO__GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
+    AWS__AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+    AWS__AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+    AWS__AWS_SESSION_TOKEN: ${{ inputs.aws-session-token }}
+    AWS__AWS_REGION_NAME: ${{ inputs.aws-region }}
+    OPENAI__API_BASE: ${{ inputs.local-llm-base }}
+    OPENAI__KEY: ${{ inputs.local-llm-key }}
+    CONFIG__MODEL: ${{ inputs.model }}
+    CONFIG__FALLBACK_MODELS: '[]'
+    CONFIG__CUSTOM_MODEL_MAX_TOKENS: ${{ inputs.max-model-tokens }}
+    PR_REVIEWER__REQUIRE_SCORE_REVIEW: 'true'
+    PR_REVIEWER__PERSISTENT_COMMENT: 'false'
+    PR_REVIEWER__ENABLE_MULTI_SUBAGENT_REVIEW: 'true'
+  args:
+    - '--pr_url'
+    - ${{ inputs.pr_url }}
+    - 'review'

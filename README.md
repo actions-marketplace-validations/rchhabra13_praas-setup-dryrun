@@ -2,7 +2,55 @@
 
 praas is an AI-powered pull request review agent that works in your own GitHub repository. This repository contains the agent itself, in [`praas/`](praas/) — containerized and executed directly within GitHub Actions review workflows, with integrations for AWS Bedrock and other AI providers.
 
-## Pull Request Review Workflows
+## Use this GitHub Action
+
+praas is published as a [Docker container action](action.yml) — add one step to any workflow in your own repository, no copying files and no Terraform required for Gemini or local-model backends.
+
+```yaml
+name: praas review
+
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  review:
+    if: github.event.label.name == 'praas-gemini'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: IkkaLabs/praas@v1
+        with:
+          model: gemini/gemini-2.5-flash
+          pr_url: ${{ github.event.pull_request.html_url }}
+          gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
+```
+
+See [`action.yml`](action.yml) for every input (`model`, `pr_url`, `github-token`, and the provider-specific credentials below). `bedrock/` models still need an IAM role trusted for your repo's OIDC subject — provision that once with [`infra/`](infra/) (see [setup-praas.md](setup-praas.md)) and pass its ARN via `aws-access-key-id`/`aws-secret-access-key`/`aws-session-token` (e.g. from [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials)) or static keys.
+
+| Backend | `model` prefix | Credentials input |
+| --- | --- | --- |
+| Google Gemini | `gemini/...` | `gemini-api-key` |
+| Amazon Bedrock | `bedrock/...` | `aws-access-key-id` / `aws-secret-access-key` / `aws-session-token`, `aws-region` |
+| OpenAI-compatible / local | `openai/...` | `local-llm-base`, `local-llm-key` |
+
+### Publishing a new version (maintainers)
+
+1. Tag a release (`git tag v1.0.0 && git push origin v1.0.0`), then draft a GitHub Release from that tag.
+2. Check **Publish this Action to the GitHub Marketplace**, pick a category (e.g. "Code review"), and publish.
+3. Move the major-version tag forward so `@v1` tracks the latest `v1.x.x`:
+   ```bash
+   git tag -f v1 v1.0.0
+   git push origin v1 --force
+   ```
+
+## Full Label Matrix (this repository's own setup)
+
+This repository dogfoods praas on itself using the label-triggered workflow matrix below — every label in one repo, backed by Terraform-managed infra. Use the [Quick Start](#use-this-github-action) above unless you specifically want to replicate this full matrix in your own repo (see [Setup Guide](#setup-guide)).
 
 Reviews are triggered by adding a label to a GitHub pull request. Each label routes the review to a specific model backend:
 
@@ -21,7 +69,8 @@ Reviews are triggered by adding a label to a GitHub pull request. Each label rou
 
 ```
 .
-├── .github/workflows/        # Label-triggered GitHub Actions review workflows
+├── action.yml                 # Marketplace action definition (docker: Dockerfile)
+├── .github/workflows/        # Label-triggered GitHub Actions review workflows (this repo's own setup)
 ├── Dockerfile                 # Container image build spec for praas
 ├── infra/                    # Terraform code for AWS OIDC trust and GitHub resources
 └── praas/                    # praas source code and configuration
@@ -42,7 +91,7 @@ Set these in your GitHub repository under **Settings → Secrets and variables �
 
 ## Setup Guide
 
-Follow these steps to integrate praas into your own repository.
+Follow these steps to replicate this repository's full label matrix (all providers, Terraform-provisioned infra) in your own repository. If you only need one or two model backends, use the [Quick Start](#use-this-github-action) instead — it skips Steps 3, 4, and 7 entirely.
 
 ### Step 1: Install Prerequisites
 
