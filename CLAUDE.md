@@ -4,15 +4,14 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-`praas` is an AI-powered pull request review agent that runs in a GitHub repository. A PR label triggers a GitHub Actions workflow that builds the agent as a container and posts a multi-lens review (correctness, security, testing, documentation) back to the PR. Reviews can run against Google Gemini, Amazon Bedrock models, or any OpenAI-compatible local endpoint.
+`praas` is an AI-powered pull request review agent, distributed as a GitHub Marketplace Docker container action (`action.yml`). A consumer workflow adds one `uses:` step; the action builds the agent image and posts a multi-lens review (correctness, security, testing, documentation) back to the PR. This build targets the Google Gemini backend only.
 
 ## Layout
 
 ```
 .
-├── .github/workflows/   # Label-triggered review workflows (_praas-review.yml is the reusable core)
+├── action.yml           # Marketplace action definition (docker: Dockerfile)
 ├── Dockerfile           # Builds the praas agent image from praas/
-├── infra/               # Terraform: AWS OIDC trust + Bedrock IAM + optional GitHub secret/labels
 └── praas/               # Agent source (Python package `praas` lives at praas/praas/)
     ├── praas/           # The importable Python package
     ├── pyproject.toml   # name = "praas", entry point praas = "praas.cli:run"
@@ -42,14 +41,9 @@ python -m compileall -q praas/praas
 ## Conventions
 
 - The importable package is `praas` (never `pr_agent`). Imports read `from praas...`.
-- Runtime config uses Dynaconf with `envvar_prefix=False`; workflow env vars are section-scoped double-underscore names (`CONFIG__MODEL`, `PR_REVIEWER__...`, `AWS__...`), not a `PRAAS_` prefix.
+- Runtime config uses Dynaconf with `envvar_prefix=False`; env vars passed via `action.yml` are section-scoped double-underscore names (`CONFIG__MODEL`, `PR_REVIEWER__...`, `GOOGLE_AI_STUDIO__...`), not a `PRAAS_` prefix.
 - The reviewed project's local config is read from `[tool.praas]` in its `pyproject.toml` (see `praas/praas/config_loader.py`).
-- Review labels (`praas-gemini`, `praas-bedrock-*`, `praas-local-*`, `praas-all`) map to model backends; each has a caller workflow that invokes `_praas-review.yml`.
-
-## Infra
-
-`infra/` provisions AWS OIDC + Bedrock IAM permissions and, when `manage_github = true`, writes the `AWS_ROLE_ARN` secret and creates the review labels. See `setup-praas.md` (repo root). Terraform state must never be committed; `.gitignore` covers it.
 
 ## Deployment
 
-End-user setup (prerequisites, credentials, variable lookups, Terraform apply, verification) is documented in the root [`README.md`](README.md).
+Consumer setup (secret, workflow snippet, label) is documented in the root [`README.md`](README.md).
