@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   review:
-    if: github.event.label.name == 'praas-local-gemma4-12b' && github.event.sender.type != 'Bot'
+    if: (github.event.label.name == 'praas-local-gemma4-12b' || github.event.label.name == 'praas-local-gemma') && github.event.sender.type != 'Bot'
     name: Review with praas (Local Gemma 4 12B)
     uses: ./.github/workflows/_praas-review.yml
     secrets: inherit

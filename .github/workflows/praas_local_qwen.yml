@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   review:
-    if: github.event.label.name == 'praas-local-qwen35-9b' && github.event.sender.type != 'Bot'
+    if: (github.event.label.name == 'praas-local-qwen35-9b' || github.event.label.name == 'praas-local-qwen') && github.event.sender.type != 'Bot'
     name: Review with praas (Local Qwen3.5 9B)
     uses: ./.github/workflows/_praas-review.yml
     secrets: inherit

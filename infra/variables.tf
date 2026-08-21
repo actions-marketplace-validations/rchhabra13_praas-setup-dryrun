@@ -80,7 +80,9 @@ variable "review_labels" {
     "praas-bedrock-kimi-k2.5" = "0e8a16"
     "praas-bedrock-deepseek"  = "0e8a16"
     "praas-local-qwen35-9b"   = "5319e7"
+    "praas-local-qwen"        = "5319e7"
     "praas-local-gemma4-12b"  = "5319e7"
+    "praas-local-gemma"       = "5319e7"
     "praas-all"               = "d93f0b"
   }
 }
