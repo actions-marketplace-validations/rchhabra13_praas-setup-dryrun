@@ -54,15 +54,15 @@ class TestConvertToMarkdown:
             'relevant_tests': 'No\n', 'possible_issues': 'No\n', 'security_concerns': 'No\n'}}
 
         expected_output = textwrap.dedent(f"""\
-            {PRReviewHeader.REGULAR.value} 🔍
+            {PRReviewHeader.REGULAR.value}
 
-            🧠 **Model:** `{get_settings().config.model}`
+            **Model** `{get_settings().config.model}`
 
             Here are some key observations to aid the review process:
 
             <table>
-            <tr><td>⏱️&nbsp;<strong>Estimated effort to review</strong>: 1 🔵⚪⚪⚪⚪</td></tr>
-            <tr><td>🧪&nbsp;<strong>No relevant tests</strong></td></tr>
+            <tr><td>⏱️&nbsp;<strong>Review effort</strong> — 1/5</td></tr>
+            <tr><td>🧪&nbsp;<strong>No tests added for these changes</strong></td></tr>
             <tr><td>&nbsp;<strong>Possible issues</strong>: No
             </td></tr>
             <tr><td>🔒&nbsp;<strong>No security concerns identified</strong></td></tr>
@@ -77,15 +77,15 @@ class TestConvertToMarkdown:
             'relevant_tests': 'No\n', 'possible_issues': 'No\n', 'security_concerns': 'No\n'}}
 
         expected_output = textwrap.dedent(f"""\
-            {PRReviewHeader.REGULAR.value} 🔍
+            {PRReviewHeader.REGULAR.value}
 
-            🧠 **Model:** `{get_settings().config.model}`
+            **Model** `{get_settings().config.model}`
 
             Here are some key observations to aid the review process:
 
-            ### ⏱️ Estimated effort to review: 1 🔵⚪⚪⚪⚪
+            ### ⏱️ Review effort — 1/5
 
-            ### 🧪 No relevant tests
+            ### 🧪 No tests added for these changes
 
             ###  Possible issues: No
 
@@ -112,14 +112,14 @@ class TestConvertToMarkdown:
         mock_git_provider.get_line_link.return_value = reference_link
 
         expected_output = textwrap.dedent(f"""\
-            {PRReviewHeader.REGULAR.value} 🔍
+            {PRReviewHeader.REGULAR.value}
 
-            🧠 **Model:** `{get_settings().config.model}`
+            **Model** `{get_settings().config.model}`
 
             Here are some key observations to aid the review process:
 
             <table>
-            <tr><td>⚡&nbsp;<strong>Recommended focus areas for review</strong><br><br>
+            <tr><td>🔎&nbsp;<strong>Focus areas for review</strong><br><br>
 
             <a href='{reference_link}'><strong>Code Smell</strong></a><br>The function is too long and complex.
 
@@ -144,16 +144,16 @@ class TestConvertToMarkdown:
         }}
 
         expected_output = textwrap.dedent(f"""\
-            {PRReviewHeader.REGULAR.value} 🔍
+            {PRReviewHeader.REGULAR.value}
 
-            🧠 **Model:** `{get_settings().config.model}`
+            **Model** `{get_settings().config.model}`
 
             Here are some key observations to aid the review process:
 
             <table>
             <tr><td>
 
-            **🎫 Ticket compliance analysis ✅**
+            **🎟️ Ticket compliance analysis ✅**
 
 
 
@@ -193,14 +193,14 @@ class TestConvertToMarkdown:
         }
 
         expected_output = textwrap.dedent(f"""\
-            {PRReviewHeader.REGULAR.value} 🔍
+            {PRReviewHeader.REGULAR.value}
 
-            🧠 **Model:** `{get_settings().config.model}`
+            **Model** `{get_settings().config.model}`
 
             Here are some key observations to aid the review process:
 
             <table>
-            <tr><td>🔀 <strong>Multiple PR themes</strong><br><br>
+            <tr><td>🗂️ <strong>Distinct changes that could be split</strong><br><br>
 
             <details><summary>
             Sub-PR theme: <b>Refactoring</b></summary>
@@ -245,9 +245,9 @@ class TestConvertToMarkdown:
         }
 
         expected_output = textwrap.dedent(f"""
-            {PRReviewHeader.REGULAR.value} 🔍
+            {PRReviewHeader.REGULAR.value}
 
-            🧠 **Model:** `{get_settings().config.model}`
+            **Model** `{get_settings().config.model}`
 
             Here are some key observations to aid the review process:
 
@@ -259,9 +259,9 @@ class TestConvertToMarkdown:
 
         # Non-GFM branch
         expected_output_no_gfm = textwrap.dedent(f"""
-        {PRReviewHeader.REGULAR.value} 🔍
+        {PRReviewHeader.REGULAR.value}
 
-        🧠 **Model:** `{get_settings().config.model}`
+        **Model** `{get_settings().config.model}`
 
         Here are some key observations to aid the review process:
 
@@ -360,8 +360,8 @@ class TestMultiSubagentRendering:
 
         markdown = convert_to_markdown_v2(input_data, multi_subagent_mode=True)
 
-        assert "🚨 **Critical findings" in markdown
-        banner_index = markdown.index("🚨 **Critical findings")
+        assert "> [!CAUTION]" in markdown
+        banner_index = markdown.index("> [!CAUTION]")
         table_index = markdown.index("<table>")
         assert banner_index < table_index
         assert "Hardcoded credential" in markdown[banner_index:table_index]
@@ -376,7 +376,7 @@ class TestMultiSubagentRendering:
 
         markdown = convert_to_markdown_v2(input_data, multi_subagent_mode=True)
 
-        assert "🚨 **Critical findings" in markdown
+        assert "> [!CAUTION]" in markdown
         assert "Sensitive information exposure" in markdown.split("<table>")[0]
 
     def test_no_banner_when_multi_subagent_mode_true_but_nothing_critical(self):
@@ -397,7 +397,7 @@ class TestMultiSubagentRendering:
 
         markdown = convert_to_markdown_v2(input_data, multi_subagent_mode=True)
 
-        assert "🚨 **Critical findings" not in markdown
+        assert "> [!CAUTION]" not in markdown
 
     def test_no_banner_when_multi_subagent_mode_false_even_with_critical_severity_present(self):
         # Defensive: banner rendering is explicitly gated on multi_subagent_mode, not merely on
@@ -418,7 +418,7 @@ class TestMultiSubagentRendering:
 
         markdown = convert_to_markdown_v2(input_data)  # multi_subagent_mode defaults to False
 
-        assert "🚨 **Critical findings" not in markdown
+        assert "> [!CAUTION]" not in markdown
 
 
 class TestBR:

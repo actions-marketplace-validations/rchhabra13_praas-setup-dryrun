@@ -228,7 +228,7 @@ class PRReviewer:
             if get_settings().pr_reviewer.persistent_comment and not self.incremental.is_incremental:
                 final_update_message = get_settings().pr_reviewer.final_update_message
                 self.git_provider.publish_persistent_comment(pr_review,
-                                                            initial_header=f"{PRReviewHeader.REGULAR.value} 🔍",
+                                                            initial_header=PRReviewHeader.REGULAR.value,
                                                             update_header=True,
                                                             final_update_message=final_update_message,
                                                             **review_thread_kwargs)
@@ -426,17 +426,17 @@ class PRReviewer:
             displayed_files = self.remaining_files_list[:MAX_REVIEW_COVERAGE_FILES]
             markdown_text += (
                 "\n\n<hr>\n\n"
-                "⚠️ **Review coverage:** The following files were not included in this review "
-                "because of the token budget:\n"
-                + "\n".join(f"- `{file}`" for file in displayed_files)
+                "> [!NOTE]\n"
+                "> **Partial coverage** — these files were left out to fit the token budget:\n"
+                + "\n".join(f"> - `{file}`" for file in displayed_files)
             )
             remaining_count = len(self.remaining_files_list) - len(displayed_files)
             if remaining_count:
-                markdown_text += f"\n... and {remaining_count} more"
+                markdown_text += f"\n> - … and {remaining_count} more"
 
         # Add help text if gfm_markdown is supported
         if self.git_provider.is_supported("gfm_markdown") and get_settings().pr_reviewer.enable_help_text:
-            markdown_text += "<hr>\n\n<details> <summary><strong>💡 Tool usage guide:</strong></summary><hr> \n\n"
+            markdown_text += "<hr>\n\n<details> <summary><strong>Review tool guide</strong></summary><hr> \n\n"
             markdown_text += HelpMessage.get_review_usage_guide()
             markdown_text += "\n</details>\n"
 

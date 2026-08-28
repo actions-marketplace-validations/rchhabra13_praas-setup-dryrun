@@ -130,16 +130,19 @@ _SEVERITY_BADGE = {
     "critical": "🔴 Critical",
     "high": "🟠 High",
     "medium": "🟡 Medium",
-    "low": "⚪ Low",
+    "low": "🔵 Low",
 }
 
 
-def _build_critical_findings_banner(review: dict) -> str:
-    """Build a "Critical findings" banner for multi-subagent review mode.
+def _build_critical_findings_banner(review: dict, gfm_supported: bool = True) -> str:
+    """Build a "Verify before merging" banner for multi-subagent review mode.
 
     Fires when the merged review has any critical-severity issue (from any subagent) or the
     security subagent flagged a concern, so those findings can't be missed or buried among
     lower-severity ones. Returns "" when there's nothing to escalate.
+
+    On providers that render GitHub-flavored alerts it uses a ``> [!CAUTION]`` block; elsewhere
+    it falls back to a plain bold line so the same information still stands out.
     """
     key_issues = review.get('key_issues_to_review') or []
     if not isinstance(key_issues, list):
@@ -158,17 +161,24 @@ def _build_critical_findings_banner(review: dict) -> str:
     # Deliberately a compact index, not a second copy of the findings: full text for
     # each item already appears once below (security_concerns row / issue detail blocks).
     # Repeating it here as well is what made early multi-subagent comments unreadably long.
-    banner = "🚨 **Critical findings — verify before merging**\n\n"
+    lines = []
     if has_security_flag:
         first_line = str(security_concerns).strip().splitlines()[0]
-        banner += f"- 🔒 Security concerns flagged — see below for details ({first_line[:80]}{'…' if len(first_line) > 80 else ''})\n"
+        lines.append(f"Security concerns flagged — details below ({first_line[:80]}{'…' if len(first_line) > 80 else ''})")
     for issue in critical_issues:
         relevant_file = str(issue.get('relevant_file', '')).strip()
         issue_header = str(issue.get('issue_header', '')).strip()
         category = issue.get('category')
         category_label = f" ({category})" if category else ""
         location = f" — `{relevant_file}`" if relevant_file else ""
-        banner += f"- **{issue_header}{category_label}**{location}\n"
+        lines.append(f"**{issue_header}{category_label}**{location}")
+
+    if gfm_supported:
+        banner = "> [!CAUTION]\n> **Verify before merging.** The findings below need attention before this PR is merged.\n"
+        banner += "".join(f"> - {line}\n" for line in lines)
+    else:
+        banner = "**Verify before merging** — the findings below need attention before this PR is merged.\n\n"
+        banner += "".join(f"- {line}\n" for line in lines)
     banner += "\n"
     return banner
 
@@ -194,35 +204,37 @@ def convert_to_markdown_v2(output_data: dict,
         str: The markdown formatted text generated from the input dictionary.
     """
 
+    # One curated icon per section. Keys are the human-readable form produced by
+    # `key.replace('_', ' ').capitalize()` below.
     emojis = {
-        "Can be split": "🔀",
-        "Key issues to review": "⚡",
-        "Recommended focus areas for review": "⚡",
-        "Score": "🏅",
+        "Can be split": "🗂️",
+        "Key issues to review": "🔎",
+        "Recommended focus areas for review": "🔎",
+        "Score": "📊",
         "Relevant tests": "🧪",
-        "Focused PR": "✨",
-        "Relevant ticket": "🎫",
+        "Focused PR": "🎯",
+        "Relevant ticket": "🎟️",
         "Security concerns": "🔒",
-        "Todo sections": "📝",
-        "Insights from user's answers": "📝",
-        "Code feedback": "🤖",
+        "Todo sections": "📌",
+        "Insights from user's answers": "💬",
+        "Code feedback": "💬",
         "Estimated effort to review [1-5]": "⏱️",
         "Contribution time cost estimate": "⏳",
-        "Ticket compliance check": "🎫",
+        "Ticket compliance check": "🎟️",
     }
     markdown_text = ""
+    model_line = f"**Model** `{get_settings().config.model}`"
     if not incremental_review:
-        markdown_text += f"{PRReviewHeader.REGULAR.value} 🔍\n\n"
-        markdown_text += f"🧠 **Model:** `{get_settings().config.model}`\n\n"
+        markdown_text += f"{PRReviewHeader.REGULAR.value}\n\n"
+        markdown_text += f"{model_line}\n\n"
     else:
-        markdown_text += f"{PRReviewHeader.INCREMENTAL.value} 🔍\n\n"
-        markdown_text += f"🧠 **Model:** `{get_settings().config.model}`\n\n"
-        markdown_text += f"⏮️ Review for commits since previous praas review {incremental_review}.\n\n"
+        markdown_text += f"{PRReviewHeader.INCREMENTAL.value}\n\n"
+        markdown_text += f"{model_line} · review of commits since previous praas review {incremental_review}\n\n"
     if not output_data or not output_data.get('review', {}):
         return ""
 
     if multi_subagent_mode:
-        markdown_text += _build_critical_findings_banner(output_data['review'])
+        markdown_text += _build_critical_findings_banner(output_data['review'], gfm_supported)
 
     if get_settings().get("pr_reviewer.enable_intro_text", False):
         markdown_text += f"Here are some key observations to aid the review process:\n\n"
@@ -238,7 +250,7 @@ def convert_to_markdown_v2(output_data: dict,
         key_nice = key.replace('_', ' ').capitalize()
         emoji = emojis.get(key_nice, "")
         if 'Estimated effort to review' in key_nice:
-            key_nice = 'Estimated effort to review'
+            key_nice = 'Review effort'
             value = str(value).strip()
             if value.isnumeric():
                 value_int = int(value)
@@ -247,29 +259,27 @@ def convert_to_markdown_v2(output_data: dict,
                     value_int = int(value.split(',')[0])
                 except ValueError:
                     continue
-            blue_bars = '🔵' * value_int
-            white_bars = '⚪' * (5 - value_int)
-            value = f"{value_int} {blue_bars}{white_bars}"
+            value = f"{value_int}/5"
             if gfm_supported:
                 markdown_text += f"<tr><td>"
-                markdown_text += f"{emoji}&nbsp;<strong>{key_nice}</strong>: {value}"
+                markdown_text += f"{emoji}&nbsp;<strong>{key_nice}</strong> — {value}"
                 markdown_text += f"</td></tr>\n"
             else:
-                markdown_text += f"### {emoji} {key_nice}: {value}\n\n"
+                markdown_text += f"### {emoji} {key_nice} — {value}\n\n"
         elif 'relevant tests' in key_nice.lower():
             value = str(value).strip().lower()
             if gfm_supported:
                 markdown_text += f"<tr><td>"
                 if is_value_no(value):
-                    markdown_text += f"{emoji}&nbsp;<strong>No relevant tests</strong>"
+                    markdown_text += f"{emoji}&nbsp;<strong>No tests added for these changes</strong>"
                 else:
-                    markdown_text += f"{emoji}&nbsp;<strong>PR contains tests</strong>"
+                    markdown_text += f"{emoji}&nbsp;<strong>Tests included in this PR</strong>"
                 markdown_text += f"</td></tr>\n"
             else:
                 if is_value_no(value):
-                    markdown_text += f'### {emoji} No relevant tests\n\n'
+                    markdown_text += f'### {emoji} No tests added for these changes\n\n'
                 else:
-                    markdown_text += f"### {emoji} PR contains tests\n\n"
+                    markdown_text += f"### {emoji} Tests included in this PR\n\n"
         elif 'ticket compliance check' in key_nice.lower():
             markdown_text = ticket_markdown_logic(emoji, markdown_text, value, gfm_supported)
         elif 'contribution time cost estimate' in key_nice.lower():
@@ -333,9 +343,9 @@ def convert_to_markdown_v2(output_data: dict,
                 if gfm_supported:
                     markdown_text += f"<tr><td>"
                     # markdown_text += f"{emoji}&nbsp;<strong>{key_nice}</strong><br><br>\n\n"
-                    markdown_text += f"{emoji}&nbsp;<strong>Recommended focus areas for review</strong><br><br>\n\n"
+                    markdown_text += f"{emoji}&nbsp;<strong>Focus areas for review</strong><br><br>\n\n"
                 else:
-                    markdown_text += f"### {emoji} Recommended focus areas for review\n\n#### \n"
+                    markdown_text += f"### {emoji} Focus areas for review\n\n#### \n"
                 for i, issue in enumerate(issues):
                     try:
                         if not issue or not isinstance(issue, dict):
@@ -535,13 +545,13 @@ def ticket_markdown_logic(emoji, markdown_text, value, gfm_supported) -> str:
 def process_can_be_split(emoji, value):
     try:
         # key_nice = "Can this PR be split?"
-        key_nice = "Multiple PR themes"
+        key_nice = "Distinct changes that could be split"
         markdown_text = ""
         if not value or isinstance(value, list) and len(value) == 1:
             value = "No"
             # markdown_text += f"<tr><td> {emoji}&nbsp;<strong>{key_nice}</strong></td><td>\n\n{value}\n\n</td></tr>\n"
             # markdown_text += f"### {emoji} No multiple PR themes\n\n"
-            markdown_text += f"{emoji} <strong>No multiple PR themes</strong>\n\n"
+            markdown_text += f"{emoji} <strong>Single, focused change</strong>\n\n"
         else:
             markdown_text += f"{emoji} <strong>{key_nice}</strong><br><br>\n\n"
             for i, split in enumerate(value):

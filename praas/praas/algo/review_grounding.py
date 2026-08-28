@@ -15,8 +15,8 @@ import re
 from typing import Any, Dict, Iterable, List
 
 UNGROUNDED_FILE_WARNING = (
-    "⚠️ Location not verified: this file was not found in the PR diff shown to the model - "
-    "double-check the file/location before acting on this finding."
+    "⚠️ **Unverified location** — this file wasn't in the diff shown to the model; "
+    "confirm the file and lines before acting on this finding."
 )
 
 _LEADING_DOT_SLASH_RE = re.compile(r"^(?:\./)+")

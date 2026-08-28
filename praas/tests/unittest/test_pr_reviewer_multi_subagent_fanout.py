@@ -167,8 +167,8 @@ async def test_prepare_prediction_merged_review_renders_critical_banner_and_seve
     markdown = reviewer._prepare_pr_review()
 
     # Critical findings banner, above the normal table, for the critical security issue.
-    assert "🚨 **Critical findings" in markdown
-    banner_index = markdown.index("🚨 **Critical findings")
+    assert "> [!CAUTION]" in markdown
+    banner_index = markdown.index("> [!CAUTION]")
     table_index = markdown.index("<table>")
     assert banner_index < table_index
     assert "SQL injection: unescaped input reaches a raw query." in markdown[banner_index:table_index]
@@ -177,10 +177,10 @@ async def test_prepare_prediction_merged_review_renders_critical_banner_and_seve
     assert "SQL Injection" in markdown
     assert "🔴 Critical" in markdown  # security issue
     assert "🟠 High" in markdown  # correctness issue
-    assert "⚪ Low" in markdown  # docs issue
+    assert "🔵 Low" in markdown  # docs issue
 
     # Fields sourced from their dedicated subagent.
-    assert "No relevant tests" in markdown  # from testing subagent's relevant_tests: No
+    assert "No tests added for these changes" in markdown  # from testing subagent's relevant_tests: No
 
 
 @pytest.mark.asyncio
@@ -202,8 +202,8 @@ async def test_prepare_prediction_survives_one_subagent_failing():
     assert "SQL Injection" in markdown
     assert "Missing docstring" in markdown
     # ...but the failed subagent's dedicated field is simply absent, not a crash / placeholder error.
-    assert "No relevant tests" not in markdown
-    assert "PR contains tests" not in markdown
+    assert "No tests added for these changes" not in markdown
+    assert "Tests included in this PR" not in markdown
 
 
 @pytest.mark.asyncio

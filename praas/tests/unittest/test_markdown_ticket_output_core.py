@@ -106,27 +106,27 @@ class TestConvertToMarkdownV2Branches:
             incremental_review="2 commits",
         )
         assert "Incremental Praas AI Review Report" in out
-        assert "Review for commits since previous praas review 2 commits" in out
+        assert "review of commits since previous praas review 2 commits" in out
 
     def test_relevant_tests_yes_branch_gfm(self):
         out = convert_to_markdown_v2(
             {"review": {"relevant_tests": "Yes"}}
         )
-        assert "<strong>PR contains tests</strong>" in out
+        assert "<strong>Tests included in this PR</strong>" in out
         assert "<table>" in out and "</table>" in out
 
     def test_relevant_tests_yes_branch_non_gfm(self):
         out = convert_to_markdown_v2(
             {"review": {"relevant_tests": "Yes"}}, gfm_supported=False
         )
-        assert "### 🧪 PR contains tests" in out
+        assert "### 🧪 Tests included in this PR" in out
         assert "<table>" not in out
 
     def test_relevant_tests_no_branch_non_gfm(self):
         out = convert_to_markdown_v2(
             {"review": {"relevant_tests": "No"}}, gfm_supported=False
         )
-        assert "### 🧪 No relevant tests" in out
+        assert "### 🧪 No tests added for these changes" in out
 
     def test_security_concerns_with_details_gfm(self):
         out = convert_to_markdown_v2(
@@ -154,7 +154,7 @@ class TestConvertToMarkdownV2Branches:
         out = convert_to_markdown_v2(
             {"review": {"key_issues_to_review": "No"}}, gfm_supported=False
         )
-        assert "### ⚡ No major issues detected" in out
+        assert "### 🔎 No major issues detected" in out
 
     def test_key_issues_possible_bug_header_softened(self):
         mock_provider = Mock()
@@ -204,14 +204,14 @@ class TestConvertToMarkdownV2Branches:
         out = convert_to_markdown_v2(
             {"review": {"estimated_effort_to_review_[1-5]": "3, because of churn"}}
         )
-        assert "Estimated effort to review</strong>: 3 🔵🔵🔵⚪⚪" in out
+        assert "Review effort</strong> — 3/5" in out
 
     def test_estimated_effort_invalid_value_is_skipped(self):
         # Completely unparsable value falls through `continue` and is omitted.
         out = convert_to_markdown_v2(
             {"review": {"estimated_effort_to_review_[1-5]": "not-a-number"}}
         )
-        assert "Estimated effort to review" not in out
+        assert "Review effort" not in out
 
     def test_can_be_split_single_item_renders_no_themes(self):
         out = convert_to_markdown_v2(
@@ -223,11 +223,11 @@ class TestConvertToMarkdownV2Branches:
                 }
             }
         )
-        assert "<strong>No multiple PR themes</strong>" in out
+        assert "<strong>Single, focused change</strong>" in out
 
     def test_can_be_split_empty_renders_no_themes(self):
         out = convert_to_markdown_v2({"review": {"can_be_split": []}})
-        assert "<strong>No multiple PR themes</strong>" in out
+        assert "<strong>Single, focused change</strong>" in out
 
     def test_default_branch_unknown_key_gfm(self):
         out = convert_to_markdown_v2(
@@ -407,13 +407,13 @@ class TestTicketMarkdownLogic:
 class TestProcessCanBeSplit:
     def test_empty_value_returns_no_themes(self):
         out = process_can_be_split("🔀", [])
-        assert "No multiple PR themes" in out
+        assert "Single, focused change" in out
 
     def test_single_element_list_returns_no_themes(self):
         out = process_can_be_split(
             "🔀", [{"title": "only one", "relevant_files": ["a.py"]}]
         )
-        assert "No multiple PR themes" in out
+        assert "Single, focused change" in out
 
     def test_multiple_themes_render_details(self):
         out = process_can_be_split(

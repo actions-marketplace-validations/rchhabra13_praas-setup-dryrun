@@ -123,7 +123,7 @@ def test_prepare_pr_review_flags_key_issue_citing_a_file_outside_the_diff():
     rendered_data = convert_mock.call_args[0][0]
     issues = rendered_data["review"]["key_issues_to_review"]
     assert issues[0]["issue_content"] == "grounded finding"
-    assert "⚠️ Location not verified" in issues[1]["issue_content"]
+    assert "⚠️ **Unverified location**" in issues[1]["issue_content"]
     assert "ungrounded finding" in issues[1]["issue_content"]
 
 
@@ -139,9 +139,10 @@ def test_prepare_pr_review_appends_complete_coverage_footer():
         settings.pr_reviewer.enable_review_coverage_footer = original_enable_review_coverage_footer
 
     assert review.startswith("original review")
-    assert "⚠️ **Review coverage:**" in review
-    assert "- `src/one.py`" in review
-    assert "- `nested/two.md`" in review
+    assert "> [!NOTE]" in review
+    assert "**Partial coverage**" in review
+    assert "> - `src/one.py`" in review
+    assert "> - `nested/two.md`" in review
     assert "\n\n<hr>\n\n" in review
     assert "\n\n---\n\n" not in review
 
@@ -158,7 +159,7 @@ def test_prepare_pr_review_hides_coverage_footer_when_disabled():
         settings.pr_reviewer.enable_review_coverage_footer = original_enable_review_coverage_footer
 
     assert review == "original review"
-    assert "Review coverage" not in review
+    assert "Partial coverage" not in review
 
 
 def test_prepare_pr_review_places_coverage_footer_before_help_text():
@@ -176,7 +177,7 @@ def test_prepare_pr_review_places_coverage_footer_before_help_text():
         settings.pr_reviewer.enable_review_coverage_footer = original_enable_review_coverage_footer
         settings.pr_reviewer.enable_help_text = original_enable_help_text
 
-    assert review.index("⚠️ **Review coverage:**") < review.index("help text")
+    assert review.index("> [!NOTE]") < review.index("help text")
 
 
 def test_prepare_pr_review_leaves_original_content_unchanged_without_remaining_files():
@@ -185,7 +186,7 @@ def test_prepare_pr_review_leaves_original_content_unchanged_without_remaining_f
     review = _render_review(reviewer, [])
 
     assert review == "original review"
-    assert "Review coverage" not in review
+    assert "Partial coverage" not in review
 
 
 def test_prepare_pr_review_limits_coverage_footer_to_50_files():
@@ -206,7 +207,7 @@ def test_prepare_pr_review_reports_number_of_files_beyond_coverage_limit():
 
     review = _render_review(reviewer, remaining_files)
 
-    assert "... and 3 more" in review
+    assert "… and 3 more" in review
     assert "- `file_50.py`" not in review
 
 
