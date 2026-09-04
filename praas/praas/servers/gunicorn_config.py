@@ -159,7 +159,7 @@ workers = compute_workers()
 # pid-guarded secret provider in servers/gitlab_webhook.py).
 preload_app = True
 worker_connections = 1000
-timeout = 240
+timeout = 3600
 keepalive = 2
 
 #
