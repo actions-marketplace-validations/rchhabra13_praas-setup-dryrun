@@ -17,13 +17,13 @@ progress_gif_width=48 # optional, width (in px) of the progress loading gif.
 verbosity_level=0 # 0,1,2
 use_extra_bad_extensions=false
 # Log
-log_level="DEBUG"
+log_level="INFO"
 # Configurations
 use_repo_settings_file=true
 use_global_settings_file=true
 extra_config_url="" # optional URL or path to an additional .praas.toml merged before the repo-local config; also settable via --extra_config_url or PRAAS_EXTRA_CONFIG_URL. See docs/docs/usage-guide/configuration_options.md#external-configuration-url.
 disable_auto_feedback = false
-ai_timeout=120 # 2 minutes
+ai_timeout=3600 # 1 hour
 skip_keys = []
 custom_reasoning_model = false # when true, disables system messages and temperature controls for models that don't support chat-style inputs
 response_language="en-US" # Language locales code for PR responses in ISO 3166 and ISO 639 format (e.g., "en-US", "it-IT", "zh-CN", ...)
